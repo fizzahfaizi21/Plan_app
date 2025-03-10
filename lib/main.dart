@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 void main() {
   runApp(const AdoptionTravelPlannerApp());
@@ -28,7 +29,6 @@ class PlanManagerScreen extends StatefulWidget {
 }
 
 class _PlanManagerScreenState extends State<PlanManagerScreen> {
-  // Plan data model - we'll expand this
   final List<Plan> _plans = [];
 
   @override
@@ -51,17 +51,135 @@ class _PlanManagerScreenState extends State<PlanManagerScreen> {
   }
 
   void _showAddPlanDialog() {
-    // We'll implement this in the next step
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    PlanType selectedType = PlanType.travel;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Create New Plan'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Plan Name',
+                        hintText: 'Enter plan name',
+                      ),
+                    ),
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        hintText: 'Enter plan description',
+                      ),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Text('Date: '),
+                        TextButton(
+                          onPressed: () async {
+                            final pickedDate = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime(2030),
+                            );
+                            if (pickedDate != null) {
+                              setState(() {
+                                selectedDate = pickedDate;
+                              });
+                            }
+                          },
+                          child: Text(
+                            DateFormat('MMM dd, yyyy').format(selectedDate),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Text('Plan Type: '),
+                        DropdownButton<PlanType>(
+                          value: selectedType,
+                          onChanged: (PlanType? newValue) {
+                            setState(() {
+                              selectedType = newValue!;
+                            });
+                          },
+                          items: PlanType.values
+                              .map<DropdownMenuItem<PlanType>>(
+                                  (PlanType value) {
+                            return DropdownMenuItem<PlanType>(
+                              value: value,
+                              child: Text(value.toString().split('.').last),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (nameController.text.isNotEmpty) {
+                      _addPlan(
+                        nameController.text,
+                        descriptionController.text,
+                        selectedDate,
+                        selectedType,
+                      );
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _addPlan(String name, String description, DateTime date, PlanType type) {
+    setState(() {
+      _plans.add(
+        Plan(
+          name: name,
+          description: description,
+          date: date,
+          type: type,
+        ),
+      );
+    });
   }
 }
 
-// Plan data model
 class Plan {
   String name;
   String description;
   DateTime date;
   bool isCompleted;
-  PlanType type; // adoption or travel
+  PlanType type;
 
   Plan({
     required this.name,
@@ -72,7 +190,6 @@ class Plan {
   });
 }
 
-// Plan type enum
 enum PlanType {
   adoption,
   travel,
