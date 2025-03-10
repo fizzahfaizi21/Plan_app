@@ -85,6 +85,8 @@ class _PlanManagerScreenState extends State<PlanManagerScreen>
   Widget _buildListView() {
     return Column(
       children: [
+        // Add a drop target section at the top of list view
+        _buildDropTargetSection(),
         Expanded(
           child: _plans.isEmpty
               ? Center(
@@ -111,9 +113,73 @@ class _PlanManagerScreenState extends State<PlanManagerScreen>
                   },
                 ),
         ),
-        // Always show templates at the bottom of list view
+        // Templates section
         _buildTemplatesSection(),
       ],
+    );
+  }
+
+  // New method to build a dedicated drop target area
+  Widget _buildDropTargetSection() {
+    return DragTarget<Map<String, dynamic>>(
+      onAccept: (data) {
+        // Create a new plan when template is dropped here
+        final name = data['name'] as String;
+        final description = data['description'] as String;
+        final type = data['type'] as PlanType;
+
+        _addPlan(name, description, DateTime.now(), type);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Added new plan: $name'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      },
+      builder: (context, candidateData, rejectedData) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: candidateData.isNotEmpty
+                ? Colors.blue.withOpacity(0.2)
+                : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color:
+                  candidateData.isNotEmpty ? Colors.blue : Colors.grey.shade300,
+              width: candidateData.isNotEmpty ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                candidateData.isNotEmpty ? Icons.add_circle : Icons.add,
+                color: candidateData.isNotEmpty ? Colors.blue : Colors.grey,
+                size: 32,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                candidateData.isNotEmpty
+                    ? 'Release to add plan'
+                    : 'Drop template here to add new plan',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: candidateData.isNotEmpty
+                      ? Colors.blue
+                      : Colors.grey.shade700,
+                  fontWeight: candidateData.isNotEmpty
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -159,93 +225,75 @@ class _PlanManagerScreenState extends State<PlanManagerScreen>
 
   Widget _buildTemplate(
       String name, String description, PlanType type, Color color) {
-    return DragTarget<Plan>(
-      onAccept: (data) {
-        // Update an existing plan when dropped on a template
-        final index = _plans.indexOf(data);
-        if (index != -1) {
-          setState(() {
-            _plans[index].type = type;
-            _plans[index].name = name;
-            _plans[index].description = description;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Updated plan to $name template'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
+    return Draggable<Map<String, dynamic>>(
+      data: {
+        'name': name,
+        'description': description,
+        'type': type,
       },
-      builder: (context, candidateData, rejectedData) {
-        // This creates the template card that is both draggable and a drop target
-        return Draggable<Map<String, dynamic>>(
-          data: {
-            'name': name,
-            'description': description,
-            'type': type,
-          },
-          feedback: Material(
-            elevation: 4,
+      feedback: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          width: 150,
+          decoration: BoxDecoration(
+            color: color,
             borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              width: 150,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                name,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
           ),
-          childWhenDragging: Opacity(
-            opacity: 0.5,
-            child: Container(
-              width: 150,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade300),
-              ),
-              child: Text(name),
-            ),
+          child: Text(
+            name,
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          child: Container(
-            width: 150,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: candidateData.isNotEmpty ? color.withOpacity(0.7) : color,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: candidateData.isNotEmpty
-                    ? Colors.blue
-                    : Colors.grey.shade300,
-                width: candidateData.isNotEmpty ? 2 : 1,
+        ),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.5,
+        child: Container(
+          width: 150,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: Text(name),
+        ),
+      ),
+      child: Container(
+        width: 150,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              description,
+              style: const TextStyle(fontSize: 12),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Drag to use template',
+              style: TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey.shade700,
               ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: const TextStyle(fontSize: 12),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -967,34 +1015,36 @@ class _PlanManagerScreenState extends State<PlanManagerScreen>
     for (final plan in _plans) {
       final normalizedDay =
           DateTime(plan.date.year, plan.date.month, plan.date.day);
+
       if (newEvents[normalizedDay] == null) {
         newEvents[normalizedDay] = [];
       }
       newEvents[normalizedDay]!.add(plan);
     }
+
     setState(() {
       _events = newEvents;
     });
   }
 }
 
+enum PlanType {
+  adoption,
+  travel,
+}
+
 class Plan {
   String name;
   String description;
   DateTime date;
-  bool isCompleted;
   PlanType type;
+  bool isCompleted;
 
   Plan({
     required this.name,
     required this.description,
     required this.date,
-    this.isCompleted = false,
     required this.type,
+    this.isCompleted = false,
   });
-}
-
-enum PlanType {
-  adoption,
-  travel,
 }
