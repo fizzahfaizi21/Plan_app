@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 void main() {
   runApp(const AdoptionTravelPlannerApp());
@@ -28,26 +29,48 @@ class PlanManagerScreen extends StatefulWidget {
   _PlanManagerScreenState createState() => _PlanManagerScreenState();
 }
 
-class _PlanManagerScreenState extends State<PlanManagerScreen> {
+class _PlanManagerScreenState extends State<PlanManagerScreen>
+    with SingleTickerProviderStateMixin {
   final List<Plan> _plans = [];
+  late TabController _tabController;
+  CalendarFormat _calendarFormat = CalendarFormat.month;
+  DateTime _focusedDay = DateTime.now();
+  DateTime? _selectedDay;
+  Map<DateTime, List<Plan>> _events = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _selectedDay = _focusedDay;
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Adoption & Travel Planner'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.list), text: 'List View'),
+            Tab(icon: Icon(Icons.calendar_today), text: 'Calendar'),
+          ],
+        ),
       ),
-      body: _plans.isEmpty
-          ? const Center(
-              child: Text('No plans yet. Create a plan to get started!'),
-            )
-          : ListView.builder(
-              itemCount: _plans.length,
-              itemBuilder: (context, index) {
-                final plan = _plans[index];
-                return _buildPlanTile(plan, index);
-              },
-            ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildListView(),
+          _buildCalendarView(),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           _showAddPlanDialog();
@@ -56,6 +79,145 @@ class _PlanManagerScreenState extends State<PlanManagerScreen> {
         tooltip: 'Create Plan',
       ),
     );
+  }
+
+  Widget _buildListView() {
+    return _plans.isEmpty
+        ? const Center(
+            child: Text('No plans yet. Create a plan to get started!'),
+          )
+        : ReorderableListView.builder(
+            itemCount: _plans.length,
+            onReorder: (oldIndex, newIndex) {
+              setState(() {
+                if (oldIndex < newIndex) {
+                  newIndex -= 1;
+                }
+                final item = _plans.removeAt(oldIndex);
+                _plans.insert(newIndex, item);
+              });
+            },
+            itemBuilder: (context, index) {
+              final plan = _plans[index];
+              return _buildPlanTile(plan, index);
+            },
+          );
+  }
+
+  Widget _buildCalendarView() {
+    _updateEventMap();
+
+    return Column(
+      children: [
+        TableCalendar(
+          firstDay: DateTime.utc(2020, 1, 1),
+          lastDay: DateTime.utc(2030, 12, 31),
+          focusedDay: _focusedDay,
+          calendarFormat: _calendarFormat,
+          eventLoader: (day) {
+            final normalizedDay = DateTime(day.year, day.month, day.day);
+            return _events[normalizedDay] ?? [];
+          },
+          selectedDayPredicate: (day) {
+            return isSameDay(_selectedDay, day);
+          },
+          onDaySelected: (selectedDay, focusedDay) {
+            setState(() {
+              _selectedDay = selectedDay;
+              _focusedDay = focusedDay;
+            });
+          },
+          onFormatChanged: (format) {
+            setState(() {
+              _calendarFormat = format;
+            });
+          },
+          onPageChanged: (focusedDay) {
+            _focusedDay = focusedDay;
+          },
+          calendarStyle: const CalendarStyle(
+            markersMaxCount: 3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: _buildSelectedDayPlans(),
+        ),
+        _buildDragTarget(),
+      ],
+    );
+  }
+
+  Widget _buildSelectedDayPlans() {
+    if (_selectedDay == null) return Container();
+
+    final normalizedDay =
+        DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day);
+    final dayPlans = _events[normalizedDay] ?? [];
+
+    return dayPlans.isEmpty
+        ? const Center(
+            child: Text('No plans for this day'),
+          )
+        : ListView.builder(
+            itemCount: dayPlans.length,
+            itemBuilder: (context, index) {
+              final plan = dayPlans[index];
+              final planIndex = _plans.indexOf(plan);
+              return _buildPlanTile(plan, planIndex);
+            },
+          );
+  }
+
+  Widget _buildDragTarget() {
+    return DragTarget<Plan>(
+      builder: (context, candidateData, rejectedData) {
+        return Container(
+          height: 80,
+          color: candidateData.isNotEmpty
+              ? Colors.green.withOpacity(0.3)
+              : Colors.grey.withOpacity(0.2),
+          child: Center(
+            child: Text(
+              candidateData.isNotEmpty
+                  ? 'Drop to assign to ${DateFormat('MMM dd, yyyy').format(_selectedDay!)}'
+                  : 'Drag a plan here to assign to ${_selectedDay != null ? DateFormat('MMM dd, yyyy').format(_selectedDay!) : 'selected date'}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        );
+      },
+      onAccept: (plan) {
+        final planIndex = _plans.indexOf(plan);
+        if (planIndex != -1 && _selectedDay != null) {
+          setState(() {
+            _plans[planIndex].date = _selectedDay!;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '${plan.name} assigned to ${DateFormat('MMM dd, yyyy').format(_selectedDay!)}'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          _updateEventMap();
+        }
+      },
+    );
+  }
+
+  void _updateEventMap() {
+    _events = {};
+    for (final plan in _plans) {
+      final normalizedDay =
+          DateTime(plan.date.year, plan.date.month, plan.date.day);
+      if (_events[normalizedDay] == null) {
+        _events[normalizedDay] = [];
+      }
+      _events[normalizedDay]!.add(plan);
+    }
   }
 
   Widget _buildPlanTile(Plan plan, int index) {
@@ -108,16 +270,20 @@ class _PlanManagerScreenState extends State<PlanManagerScreen> {
         });
         return false; // Don't remove the item from the list
       },
-      child: GestureDetector(
-        onDoubleTap: () {
-          _deletePlan(index);
-        },
-        onLongPress: () {
-          _showEditPlanDialog(plan, index);
-        },
-        child: Card(
-          color: tileColor,
+      child: LongPressDraggable<Plan>(
+        data: plan,
+        feedback: Material(
+          elevation: 4,
+          child: Container(
+            width: MediaQuery.of(context).size.width * 0.9,
+            padding: const EdgeInsets.all(16),
+            color: tileColor,
+            child: Text(plan.name, style: const TextStyle(fontSize: 16)),
+          ),
+        ),
+        childWhenDragging: Card(
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          color: Colors.grey.shade200,
           child: ListTile(
             title: Text(
               plan.name,
@@ -126,31 +292,56 @@ class _PlanManagerScreenState extends State<PlanManagerScreen> {
                     ? TextDecoration.lineThrough
                     : TextDecoration.none,
                 fontWeight: FontWeight.bold,
+                color: Colors.grey,
               ),
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(plan.description),
-                const SizedBox(height: 4),
-                Text(
-                  'Date: ${DateFormat('MMM dd, yyyy').format(plan.date)}',
-                  style: const TextStyle(fontSize: 12),
+            subtitle: Text('Dragging...'),
+          ),
+        ),
+        child: GestureDetector(
+          onDoubleTap: () {
+            _deletePlan(index);
+          },
+          onLongPress: () {
+            _showEditPlanDialog(plan, index);
+          },
+          child: Card(
+            color: tileColor,
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: ListTile(
+              title: Text(
+                plan.name,
+                style: TextStyle(
+                  decoration: plan.isCompleted
+                      ? TextDecoration.lineThrough
+                      : TextDecoration.none,
+                  fontWeight: FontWeight.bold,
                 ),
-                Text(
-                  'Type: ${plan.type.toString().split('.').last}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                Text(
-                  'Status: ${plan.isCompleted ? "Completed" : "Pending"}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: plan.isCompleted ? Colors.green : Colors.red,
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(plan.description),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Date: ${DateFormat('MMM dd, yyyy').format(plan.date)}',
+                    style: const TextStyle(fontSize: 12),
                   ),
-                ),
-              ],
+                  Text(
+                    'Type: ${plan.type.toString().split('.').last}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  Text(
+                    'Status: ${plan.isCompleted ? "Completed" : "Pending"}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: plan.isCompleted ? Colors.green : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+              isThreeLine: true,
             ),
-            isThreeLine: true,
           ),
         ),
       ),
@@ -160,7 +351,7 @@ class _PlanManagerScreenState extends State<PlanManagerScreen> {
   void _showAddPlanDialog() {
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
-    DateTime selectedDate = DateTime.now();
+    DateTime selectedDate = _selectedDay ?? DateTime.now();
     PlanType selectedType = PlanType.travel;
 
     showDialog(
@@ -404,6 +595,7 @@ class _PlanManagerScreenState extends State<PlanManagerScreen> {
           type: type,
         ),
       );
+      _updateEventMap();
     });
   }
 
@@ -415,6 +607,7 @@ class _PlanManagerScreenState extends State<PlanManagerScreen> {
       _plans[index].date = date;
       _plans[index].type = type;
       _plans[index].isCompleted = isCompleted;
+      _updateEventMap();
     });
   }
 
@@ -427,11 +620,11 @@ class _PlanManagerScreenState extends State<PlanManagerScreen> {
           duration: const Duration(seconds: 2),
         ),
       );
+      _updateEventMap();
     });
   }
 }
 
-//
 class Plan {
   String name;
   String description;
